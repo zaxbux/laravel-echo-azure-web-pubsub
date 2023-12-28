@@ -1,4 +1,4 @@
-import { AzureChannel } from './azure-channel'
+import { AzureChannel } from './channel'
 import type { PresenceChannel } from 'laravel-echo'
 
 /**

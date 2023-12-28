@@ -1,6 +1,18 @@
-import { WebPubSubClient, type WebPubSubClientOptions } from '@azure/web-pubsub-client'
+import {
+	JSONTypes,
+	SendEventOptions,
+	WebPubSubClient,
+	WebPubSubDataType,
+	WebPubSubResult,
+	type WebPubSubClientOptions,
+} from '@azure/web-pubsub-client'
 import { Connector, type PresenceChannel } from 'laravel-echo'
-import { AzureChannel, AzurePresenceChannel, AzurePrivateChannel } from './channel'
+import {
+	AzureChannel,
+	AzureEncryptedPrivateChannel,
+	AzurePresenceChannel,
+	AzurePrivateChannel,
+} from './channel'
 
 export interface AzureConnectorOptions extends WebPubSubClientOptions {
 	client?: WebPubSubClient
@@ -24,7 +36,7 @@ export class AzureConnector extends Connector {
 	/**
 	 * All of the subscribed channel names.
 	 */
-	channels: Record<string, any> = {}
+	channels: Map<string, AzureChannel> = new Map()
 
 	userId?: string
 	connectionId?: string
@@ -73,56 +85,57 @@ export class AzureConnector extends Connector {
 	 * Get a channel instance by name.
 	 */
 	channel(name: string): AzureChannel {
-		if (!this.channels[name]) {
-			this.channels[name] = new AzureChannel(this.client, name, this.options)
+		if (!this.channels.has(name)) {
+			this.channels.set(name, new AzureChannel(this.client, name, this.options))
 		}
 
-		return this.channels[name]
+		return this.channels.get(name)!
 	}
 
 	/**
 	 * Get a private channel instance by name.
 	 */
 	privateChannel(name: string): AzureChannel {
-		if (!this.channels['private-' + name]) {
-			this.channels['private-' + name] = new AzurePrivateChannel(
-				this.client,
-				'private-' + name,
-				this.options
-			)
+		name = 'private-' + name
+		if (!this.channels.has(name)) {
+			this.channels.set(name, new AzurePrivateChannel(this.client, name, this.options))
 		}
 
-		return this.channels['private-' + name]
+		return this.channels.get(name)!
 	}
 
-	// /**
-	//  * Get a private encrypted channel instance by name.
-	//  */
-	// encryptedPrivateChannel(name: string): AzureChannel {
-	// 	if (!this.channels['private-encrypted-' + name]) {
-	// 		this.channels['private-encrypted-' + name] = new AzureEncryptedPrivateChannel(
-	// 			this.client,
-	// 			'private-encrypted-' + name,
-	// 			this.options
-	// 		)
-	// 	}
+	/**
+	 * Get a private encrypted channel instance by name.
+	 */
+	encryptedPrivateChannel(name: string): AzureChannel {
+		name = 'private-encrypted-' + name
 
-	// 	return this.channels['private-encrypted-' + name]
-	// }
+		if (!this.channels.has(name)) {
+			this.channels.set(name, new AzureEncryptedPrivateChannel(
+				this.client,
+				name,
+				this.options
+			))
+		}
+
+		return this.channels.get(name)!
+	}
 
 	/**
 	 * Get a presence channel instance by name.
 	 */
 	presenceChannel(name: string): PresenceChannel {
-		if (!this.channels['presence-' + name]) {
-			this.channels['presence-' + name] = new AzurePresenceChannel(
+		name = 'presence-' + name
+
+		if (!this.channels.has(name)) {
+			this.channels.set(name, new AzurePresenceChannel(
 				this.client,
-				'presence-' + name,
+				name,
 				this.options
-			)
+			))
 		}
 
-		return this.channels['presence-' + name]
+		return this.channels.get(name)! as unknown as PresenceChannel
 	}
 
 	/**
@@ -140,10 +153,10 @@ export class AzureConnector extends Connector {
 	 * Leave the given channel.
 	 */
 	leaveChannel(name: string): void {
-		if (this.channels[name]) {
-			this.channels[name].unsubscribe()
+		if (this.channels.has(name)) {
+			this.channels.get(name)!.unsubscribe()
 
-			delete this.channels[name]
+			this.channels.delete(name)
 		}
 	}
 
@@ -159,6 +172,15 @@ export class AzureConnector extends Connector {
 	 */
 	disconnect(): void {
 		this.client?.stop()
+	}
+
+	sendEvent(
+		eventName: string,
+		content: JSONTypes | ArrayBuffer,
+		dataType: WebPubSubDataType,
+		options?: SendEventOptions
+	): Promise<WebPubSubResult> {
+		return this.client.sendEvent(eventName, content, dataType, options)
 	}
 
 	private handleEvents(): void {
